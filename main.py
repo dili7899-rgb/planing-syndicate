@@ -1,5 +1,6 @@
 import hashlib
 import numpy as np
+import os
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -14,11 +15,12 @@ app = FastAPI(title="Ghost Machine - UK PropTech Backend")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Използваме променливата от средата за сигурност
-import os
-DB_CONFIG = os.getenv("DB_CONFIG", "postgresql://syndicate_admin:PropTech2026!@db.dchtyvecwdrtbtbdxzgg.supabase.co:5432/postgres")
+# Вече използваме DATABASE_URL, което си задал в Railway Variables
+DB_CONFIG = os.getenv("DATABASE_URL")
 
 def get_db_connection():
+    if not DB_CONFIG:
+        raise Exception("DATABASE_URL is not set in environment variables.")
     return psycopg2.connect(DB_CONFIG)
 
 # --- Помощна функция за одит ---
