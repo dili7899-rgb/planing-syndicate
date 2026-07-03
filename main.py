@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# --- Конфигурация ---
+# --- Configuration ---
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Ghost Machine - UK PropTech Risk Oracle")
 app.state.limiter = limiter
@@ -21,8 +21,12 @@ def get_db_connection():
     if not DB_CONFIG:
         raise Exception("DATABASE_URL is not set.")
     return psycopg2.connect(DB_CONFIG)
+def get_db_connection():
+    if not DB_CONFIG:
+        raise Exception("DATABASE_URL is not set.")
+    return psycopg2.connect(DB_CONFIG)
 
-# --- Помощна функция за одит ---
+# --- Audit Logging System ---
 def log_audit(user_id: str, action: str, hash_val: str, dp_noise: float):
     try:
         conn = get_db_connection()
@@ -37,7 +41,7 @@ def log_audit(user_id: str, action: str, hash_val: str, dp_noise: float):
     except Exception as e:
         print(f"Audit log failed: {str(e)}")
 
-# --- Модели ---
+# --- Data Models ---
 class UserRegister(BaseModel):
     email: EmailStr
     tos_accepted: bool
@@ -49,7 +53,7 @@ class BurnCalculation(BaseModel):
     lpa: str
 
 # ==========================================
-# 1. ПРАВЕН ПОРТИЕР (User Onboarding)
+# 1. USER ONBOARDING
 # ==========================================
 @app.post("/api/register")
 @limiter.limit("3/minute")
@@ -63,13 +67,12 @@ async def register_user(request: Request, user: UserRegister):
     return {"message": "User registered successfully."}
 
 # ==========================================
-# 2. SME CASH BURN CALCULATOR (Твоят "Hook")
+# 2. SME CASH BURN CALCULATOR (THE HOOK)
 # ==========================================
-@app.post("/api/calculate-burn")
+@app.post("/api/calculate-burn-rate")
 @limiter.limit("5/minute")
-async def calculate_burn(request: Request, payload: BurnCalculation):
-    # Тук логиката е: (Сума * Лихва) / 12 месеца * Забавяне
-    # Забавянето от 4 месеца е консервативен среден стандарт за "проблемна" община
+async def calculate_burn_rate(request: Request, payload: BurnCalculation):
+    # Logic based on regional planning friction benchmarks
     delay_months = 4 
     monthly_interest = (payload.loan_amount * payload.annual_interest_rate) / 12
     total_burn = monthly_interest * delay_months
@@ -77,14 +80,14 @@ async def calculate_burn(request: Request, payload: BurnCalculation):
     return {
         "lpa": payload.lpa,
         "projected_delay_months": delay_months,
-        "total_financial_exposure": round(total_burn, 2),
-        "warning": "Estimation based on regional planning friction benchmarks."
+        "total_financial_exposure_gbp": round(total_burn, 2),
+        "disclaimer": "Estimation based on regional planning friction benchmarks."
     }
 
 # ==========================================
-# 3. БЕНЧМАРК (DP PROTECTED)
+# 3. DP-PROTECTED RISK BENCHMARK
 # ==========================================
-@app.get("/api/lpa-benchmark/{lpa_name}")
+@app.get("/api/benchmark/{lpa_name}")
 @limiter.limit("10/minute")
 async def get_lpa_benchmark(request: Request, lpa_name: str):
     conn = get_db_connection()
@@ -92,9 +95,11 @@ async def get_lpa_benchmark(request: Request, lpa_name: str):
     cursor.execute("SELECT days_to_decision FROM practitioner_metrics WHERE lpa_name = %s;", (lpa_name.title(),))
     rows = cursor.fetchall()
     
+    # Default values for fallback if no data exists
     vals = [r["days_to_decision"] for r in rows] if rows else [120, 150, 180]
     median = float(np.median(vals))
     
+    # Differential Privacy Engine: Laplace noise
     noise = float(np.random.laplace(0, 2.5))
     median += noise
     
@@ -102,6 +107,7 @@ async def get_lpa_benchmark(request: Request, lpa_name: str):
     
     return {
         "lpa": lpa_name,
-        "median_days_to_decision": round(median, 1),
-        "risk_level": "High" if median > 150 else "Moderate"
+        "median_approval_days": round(median, 1),
+        "risk_profile": "High" if median > 150 else "Moderate"
     }
+
