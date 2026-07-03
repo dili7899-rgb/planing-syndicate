@@ -1,4 +1,4 @@
-import hashlib
+iimport hashlib
 import os
 import numpy as np
 import psycopg2
@@ -10,23 +10,27 @@ from slowapi.errors import RateLimitExceeded
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# --- CONFIGURATION & PATH SETUP ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 
-# --- Configuration ---
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# --- APP SETUP ---
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Ghost Machine - UK PropTech Risk Oracle")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-
 def get_db_connection():
     if not DATABASE_URL:
-        raise Exception("DATABASE_URL is not configured in the environment.")
-    return psycopg2.connect(DATABASE_URL)
+        raise Exception("DATABASE_URL is not configured in the environment. Check your .env file.")
+    try:
+        return psycopg2.connect(DATABASE_URL)
+    except Exception as e:
+        raise Exception(f"Database connection error: {str(e)}")
 
-# --- Audit Logging System ---
+# --- AUDIT LOGGING SYSTEM ---
 def log_audit(user_id: str, action: str, input_hash: str, dp_noise: float):
     try:
         conn = get_db_connection()
@@ -40,7 +44,7 @@ def log_audit(user_id: str, action: str, input_hash: str, dp_noise: float):
     except Exception as e:
         print(f"Audit log error: {str(e)}")
 
-# --- Data Models ---
+# --- DATA MODELS ---
 class UserRegister(BaseModel):
     email: EmailStr
     tos_accepted: bool
@@ -50,7 +54,7 @@ class BurnCalculation(BaseModel):
     annual_interest_rate: float
     lpa: str
 
-# --- Endpoints ---
+# --- ENDPOINTS ---
 
 @app.post("/api/register")
 @limiter.limit("3/minute")
